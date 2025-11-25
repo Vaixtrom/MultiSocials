@@ -1,4 +1,4 @@
-FROM rust:1.82-bookworm
+FROM rust:1.83-bookworm
 
 # Install system dependencies for Tauri
 RUN apt-get update && apt-get install -y \
