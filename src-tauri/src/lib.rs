@@ -1,9 +1,8 @@
+#![allow(unexpected_cfgs)]
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
 #[cfg(target_os = "macos")]
-use cocoa::appkit::NSWindowOrderingMode;
-#[cfg(target_os = "macos")]
-use cocoa::base::id;
+use objc::runtime::Object;
 #[cfg(target_os = "macos")]
 use objc::{msg_send, sel, sel_impl};
 
@@ -99,16 +98,16 @@ async fn create_service_view(
         if let Some(main_window) = app.get_webview_window("main") {
             #[cfg(target_os = "macos")]
             {
-                let child_ns_window: id = window.ns_window().map_err(|e| e.to_string())? as id;
-                let main_ns_window: id = main_window.ns_window().map_err(|e| e.to_string())? as id;
+                let child_ns_window: *mut Object = window.ns_window().map_err(|e| e.to_string())? as *mut Object;
+                let main_ns_window: *mut Object = main_window.ns_window().map_err(|e| e.to_string())? as *mut Object;
                 
                 // Cast to usize to allow moving into closure (Send)
                 let child_ptr = child_ns_window as usize;
                 let main_ptr = main_ns_window as usize;
                 
                 let _ = app.run_on_main_thread(move || {
-                    let child = child_ptr as id;
-                    let main = main_ptr as id;
+                    let child = child_ptr as *mut Object;
+                    let main = main_ptr as *mut Object;
                     unsafe {
                         let _: () = msg_send![main, addChildWindow:child ordered:1]; // 1 = NSWindowAbove
                         let _: () = msg_send![child, makeKeyAndOrderFront:0];
@@ -165,17 +164,17 @@ async fn update_service_view_mode(
 
         #[cfg(target_os = "macos")]
         {
-            let child_ns_window: id = window.ns_window().map_err(|e| e.to_string())? as id;
+            let child_ns_window: *mut Object = window.ns_window().map_err(|e| e.to_string())? as *mut Object;
             if let Some(main_window) = app.get_webview_window("main") {
-                let main_ns_window: id = main_window.ns_window().map_err(|e| e.to_string())? as id;
+                let main_ns_window: *mut Object = main_window.ns_window().map_err(|e| e.to_string())? as *mut Object;
                 
                 let child_ptr = child_ns_window as usize;
                 let main_ptr = main_ns_window as usize;
                 let is_embedded = embedded;
 
                 let _ = app.run_on_main_thread(move || {
-                    let child = child_ptr as id;
-                    let main = main_ptr as id;
+                    let child = child_ptr as *mut Object;
+                    let main = main_ptr as *mut Object;
                     unsafe {
                         if is_embedded {
                             let _: () = msg_send![main, addChildWindow:child ordered:1]; // 1 = NSWindowAbove
@@ -315,7 +314,7 @@ async fn close_service_view(app: tauri::AppHandle, id: String) -> Result<(), Str
 pub fn run() {
     println!("Starting Tauri application...");
     tauri::Builder::default()
-        .setup(|app| {
+        .setup(|_app| {
             println!("Tauri setup hook executing...");
             Ok(())
         })
