@@ -59,8 +59,16 @@ jobs:
           VERSION=${GITHUB_REF_NAME#v}
           echo "Renaming artifacts for version $VERSION"
           
+          if [ "${{ matrix.platform }}" == "macos-latest" ]; then
+            BUNDLE_PATH="src-tauri/target/universal-apple-darwin/release/bundle"
+          else
+            BUNDLE_PATH="src-tauri/target/release/bundle"
+          fi
+          
+          echo "Searching for bundles in $BUNDLE_PATH"
+          
           # Find all files in the bundle directory
-          find src-tauri/target/release/bundle -type f | while read file; do
+          find "$BUNDLE_PATH" -type f | while read file; do
             # Replace _VERSION or -VERSION with empty string
             # We use sed to replace the version pattern
             new_name=$(echo "$file" | sed "s/[-_]$VERSION//")
@@ -81,5 +89,6 @@ jobs:
             src-tauri/target/release/bundle/deb/*.deb
             src-tauri/target/release/bundle/msi/*.msi
             src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
           draft: true
           prerelease: false
