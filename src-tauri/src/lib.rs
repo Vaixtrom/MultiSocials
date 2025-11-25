@@ -1,5 +1,12 @@
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
+#[cfg(target_os = "macos")]
+use cocoa::appkit::NSWindowOrderingMode;
+#[cfg(target_os = "macos")]
+use cocoa::base::id;
+#[cfg(target_os = "macos")]
+use objc::{msg_send, sel, sel_impl};
+
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -30,10 +37,9 @@ async fn create_service_view(
         WebviewUrl::External(url.parse().map_err(|e| format!("{:?}", e))?),
     )
     .title("Service")
-    .inner_size(width as f64, height as f64)
-    .position(x as f64, y as f64)
     .decorations(!embedded) // Show decorations if not embedded
     .skip_taskbar(embedded) // Skip taskbar if embedded
+    .disable_drag_drop_handler() // Fix: Allow internal drag-and-drop (e.g. tabs, discord servers)
     .visible(false); // Start hidden
 
     // Session Isolation: Set a unique data directory for this service
@@ -51,8 +57,65 @@ async fn create_service_view(
 
     let window = builder.build().map_err(|e| e.to_string())?;
 
+    // Set size and position using Physical units to match frontend calculations
+    window
+        .set_size(tauri::PhysicalSize::new(width, height))
+        .map_err(|e| e.to_string())?;
+    
+    #[cfg(not(target_os = "macos"))]
+    window
+        .set_position(tauri::PhysicalPosition::new(x, y))
+        .map_err(|e| e.to_string())?;
+
+    #[cfg(target_os = "macos")]
     if embedded {
         if let Some(main_window) = app.get_webview_window("main") {
+            let main_pos = main_window.inner_position().map_err(|e| e.to_string())?;
+            // On macOS, we need to account for the title bar height manually
+            let scale_factor = main_window.scale_factor().map_err(|e| e.to_string())?;
+            let title_bar_height = (28.0 * scale_factor) as i32;
+            
+            let new_x = main_pos.x + x;
+            let new_y = main_pos.y + y + title_bar_height;
+            
+            window
+                .set_position(tauri::PhysicalPosition::new(new_x, new_y))
+                .map_err(|e| e.to_string())?;
+            
+            // Adjust height to account for the title bar offset so it doesn't overflow
+            if height > title_bar_height as u32 {
+                window
+                    .set_size(tauri::PhysicalSize::new(width, height - title_bar_height as u32))
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+    } else {
+        window
+            .set_position(tauri::PhysicalPosition::new(x, y))
+            .map_err(|e| e.to_string())?;
+    }
+
+    if embedded {
+        if let Some(main_window) = app.get_webview_window("main") {
+            #[cfg(target_os = "macos")]
+            {
+                let child_ns_window: id = window.ns_window().map_err(|e| e.to_string())? as id;
+                let main_ns_window: id = main_window.ns_window().map_err(|e| e.to_string())? as id;
+                
+                // Cast to usize to allow moving into closure (Send)
+                let child_ptr = child_ns_window as usize;
+                let main_ptr = main_ns_window as usize;
+                
+                let _ = app.run_on_main_thread(move || {
+                    let child = child_ptr as id;
+                    let main = main_ptr as id;
+                    unsafe {
+                        let _: () = msg_send![main, addChildWindow:child ordered:1]; // 1 = NSWindowAbove
+                        let _: () = msg_send![child, makeKeyAndOrderFront:0];
+                    }
+                });
+            }
+
             #[cfg(target_os = "windows")]
             {
                 use windows::Win32::Foundation::HWND;
@@ -81,11 +144,6 @@ async fn create_service_view(
         }
     }
 
-    // Force position again just in case
-    window
-        .set_position(tauri::LogicalPosition::new(x as f64, y as f64))
-        .map_err(|e| e.to_string())?;
-
     Ok(())
 }
 
@@ -104,6 +162,31 @@ async fn update_service_view_mode(
         window
             .set_skip_taskbar(embedded)
             .map_err(|e| e.to_string())?;
+
+        #[cfg(target_os = "macos")]
+        {
+            let child_ns_window: id = window.ns_window().map_err(|e| e.to_string())? as id;
+            if let Some(main_window) = app.get_webview_window("main") {
+                let main_ns_window: id = main_window.ns_window().map_err(|e| e.to_string())? as id;
+                
+                let child_ptr = child_ns_window as usize;
+                let main_ptr = main_ns_window as usize;
+                let is_embedded = embedded;
+
+                let _ = app.run_on_main_thread(move || {
+                    let child = child_ptr as id;
+                    let main = main_ptr as id;
+                    unsafe {
+                        if is_embedded {
+                            let _: () = msg_send![main, addChildWindow:child ordered:1]; // 1 = NSWindowAbove
+                            let _: () = msg_send![child, makeKeyAndOrderFront:0];
+                        } else {
+                            let _: () = msg_send![main, removeChildWindow:child];
+                        }
+                    }
+                });
+            }
+        }
 
         #[cfg(target_os = "windows")]
         {
@@ -153,12 +236,49 @@ async fn update_service_view_bounds(
 ) -> Result<(), String> {
     let label = format!("service-{}", id);
     if let Some(window) = app.get_webview_window(&label) {
-        window
-            .set_position(tauri::LogicalPosition::new(x as f64, y as f64))
-            .map_err(|e| e.to_string())?;
-        window
-            .set_size(tauri::LogicalSize::new(width as f64, height as f64))
-            .map_err(|e| e.to_string())?;
+        #[cfg(target_os = "macos")]
+        {
+            // On macOS, if embedded, we need to offset by main window position
+            // We check if it's embedded by checking decorations (embedded = no decorations)
+            if !window.is_decorated().map_err(|e| e.to_string())? {
+                if let Some(main_window) = app.get_webview_window("main") {
+                    let main_pos = main_window.inner_position().map_err(|e| e.to_string())?;
+                    let scale_factor = main_window.scale_factor().map_err(|e| e.to_string())?;
+                    let title_bar_height = (28.0 * scale_factor) as i32;
+
+                    let new_x = main_pos.x + x;
+                    let new_y = main_pos.y + y + title_bar_height;
+                    window
+                        .set_position(tauri::PhysicalPosition::new(new_x, new_y))
+                        .map_err(|e| e.to_string())?;
+                    
+                    // Adjust height to account for the title bar offset
+                    if height > title_bar_height {
+                        window
+                            .set_size(tauri::PhysicalSize::new(width as u32, (height - title_bar_height) as u32))
+                            .map_err(|e| e.to_string())?;
+                    }
+                }
+            } else {
+                window
+                    .set_position(tauri::PhysicalPosition::new(x, y))
+                    .map_err(|e| e.to_string())?;
+                window
+                    .set_size(tauri::PhysicalSize::new(width as u32, height as u32))
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            window
+                .set_position(tauri::PhysicalPosition::new(x, y))
+                .map_err(|e| e.to_string())?;
+
+            window
+                .set_size(tauri::PhysicalSize::new(width as u32, height as u32))
+                .map_err(|e| e.to_string())?;
+        }
     }
     Ok(())
 }
@@ -193,7 +313,12 @@ async fn close_service_view(app: tauri::AppHandle, id: String) -> Result<(), Str
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    println!("Starting Tauri application...");
     tauri::Builder::default()
+        .setup(|app| {
+            println!("Tauri setup hook executing...");
+            Ok(())
+        })
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![

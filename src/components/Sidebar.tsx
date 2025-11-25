@@ -111,7 +111,7 @@ export default function Sidebar({ services, activeService, onSelectService, onAd
     const ActiveIcon = activeServiceItem?.icon;
 
     return (
-        <div className="w-20 h-screen bg-gray-900/90 backdrop-blur-md flex flex-col items-center py-6 border-r border-white/10">
+        <div className="w-20 h-screen bg-gray-900 flex flex-col items-center py-6 border-r border-white/10">
             <DndContext
                 sensors={sensors}
                 collisionDetection={closestCenter}
@@ -144,7 +144,7 @@ export default function Sidebar({ services, activeService, onSelectService, onAd
 
                 <DragOverlay dropAnimation={{ duration: 200, easing: 'cubic-bezier(0.18, 0.67, 0.6, 1.22)' }}>
                     {activeServiceItem && ActiveIcon ? (
-                        <div className="p-3 rounded-xl bg-white/15 shadow-2xl backdrop-blur-sm scale-110 cursor-grabbing">
+                        <div className="p-3 rounded-xl bg-white/15 shadow-2xl scale-110 cursor-grabbing">
                             <ActiveIcon
                                 className="w-8 h-8"
                                 style={{ color: activeServiceItem.color }}
