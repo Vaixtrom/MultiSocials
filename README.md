@@ -16,9 +16,6 @@ Desktop app for managing multiple social media accounts in one place.
 
 > **Note:** On macOS, you may need to go to **System Settings** > **Privacy & Security** and scroll to the bottom to allow the app to open, as it is not code-signed by Apple.
 
-### Linux
-- `MultiSocials.AppImage` (Recommended)
-- `MultiSocials.deb` (Debian/Ubuntu)
 
 ## Screenshots
 

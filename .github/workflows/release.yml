@@ -11,8 +11,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
           - os: macos-latest
             target: universal-apple-darwin
           - os: windows-latest
@@ -32,17 +30,11 @@ jobs:
         with:
           targets: ${{ matrix.target == 'universal-apple-darwin' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
-      - name: install dependencies (ubuntu only)
-        if: matrix.os == 'ubuntu-22.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf libsoup-3.0-dev libjavascriptcoregtk-4.1-dev libssl-dev
-
       - name: install frontend dependencies
         run: npm install
 
-      - name: Build (Linux/Windows)
-        if: matrix.os != 'macos-latest'
+      - name: Build (Windows)
+        if: matrix.os == 'windows-latest'
         run: npm run tauri build
 
       - name: Build (macOS)
@@ -66,18 +58,5 @@ jobs:
           cd src-tauri/target/universal-apple-darwin/release/bundle/dmg
           mv *.dmg MultiSocials.dmg
           gh release upload ${{ github.event.release.tag_name }} MultiSocials.dmg
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Rename and Upload (Linux)
-        if: matrix.os == 'ubuntu-22.04'
-        run: |
-          cd src-tauri/target/release/bundle/appimage
-          mv *.AppImage MultiSocials.AppImage
-          gh release upload ${{ github.event.release.tag_name }} MultiSocials.AppImage
-          
-          cd ../deb
-          mv *.deb MultiSocials.deb
-          gh release upload ${{ github.event.release.tag_name }} MultiSocials.deb
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
