@@ -34,6 +34,7 @@ async fn create_service_view(
     .position(x as f64, y as f64)
     .decorations(!embedded) // Show decorations if not embedded
     .skip_taskbar(embedded) // Skip taskbar if embedded
+    .disable_drag_drop_handler()
     .visible(false); // Start hidden
 
     // Session Isolation: Set a unique data directory for this service
