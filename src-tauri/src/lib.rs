@@ -123,11 +123,17 @@ async fn create_service_view(
             if let Some(main_window) = app.get_webview_window("main") {
                 let parent_pos = main_window.outer_position().map_err(|e| e.to_string())?;
                 let new_x = parent_pos.x + x;
-                let new_y = parent_pos.y + y;
+                let new_y = parent_pos.y + y + 60; // Offset for macOS header
                 window
                     .set_position(tauri::Position::Physical(tauri::PhysicalPosition {
                         x: new_x,
                         y: new_y,
+                    }))
+                    .map_err(|e| e.to_string())?;
+                window
+                    .set_size(tauri::Size::Physical(tauri::PhysicalSize {
+                        width: width as u32,
+                        height: (height as i32 - 60) as u32,
                     }))
                     .map_err(|e| e.to_string())?;
             }
@@ -276,7 +282,7 @@ async fn update_service_view_bounds(
 
                 let parent_pos = main_window.outer_position().map_err(|e| e.to_string())?;
                 let new_x = parent_pos.x + x;
-                let new_y = parent_pos.y + y;
+                let new_y = parent_pos.y + y + 60; // Offset for macOS header
 
                 window
                     .set_position(tauri::Position::Physical(tauri::PhysicalPosition {
@@ -287,7 +293,7 @@ async fn update_service_view_bounds(
                 window
                     .set_size(tauri::Size::Physical(tauri::PhysicalSize {
                         width: width as u32,
-                        height: height as u32,
+                        height: (height as i32 - 60) as u32,
                     }))
                     .map_err(|e| e.to_string())?;
                 return Ok(());
