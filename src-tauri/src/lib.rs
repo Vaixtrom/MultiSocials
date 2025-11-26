@@ -1,3 +1,4 @@
+#![allow(unexpected_cfgs)]
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
@@ -79,13 +80,63 @@ async fn create_service_view(
                     SetWindowLongPtrW(child_hwnd, GWL_STYLE, new_style);
                 }
             }
+
+            #[cfg(target_os = "macos")]
+            {
+                use cocoa::base::id;
+                use objc::{msg_send, sel, sel_impl};
+
+                let child_ptr = window.ns_window().map_err(|e| e.to_string())? as id;
+                let main_ptr = main_window.ns_window().map_err(|e| e.to_string())? as id;
+
+                let child_ptr_addr = child_ptr as usize;
+                let main_ptr_addr = main_ptr as usize;
+
+                dispatch::Queue::main().exec_sync(move || unsafe {
+                    let child_ptr = child_ptr_addr as id;
+                    let main_ptr = main_ptr_addr as id;
+
+                    // Add child window ordered above
+                    let _: () = msg_send![main_ptr, addChildWindow:child_ptr ordered:1]; // 1 = NSWindowAbove
+                    
+                    // Ensure borderless and non-movable to prevent detachment
+                    let _: () = msg_send![child_ptr, setStyleMask:0]; // 0 = NSWindowStyleMaskBorderless
+                    let _: () = msg_send![child_ptr, setMovable:0];
+                    let _: () = msg_send![child_ptr, setMovableByWindowBackground:0];
+
+                    // Remove shadow for cleaner look
+                    let _: () = msg_send![child_ptr, setHasShadow:0];
+                });
+            }
         }
     }
 
     // Force position again just in case
+    #[cfg(not(target_os = "macos"))]
     window
         .set_position(tauri::LogicalPosition::new(x as f64, y as f64))
         .map_err(|e| e.to_string())?;
+
+    #[cfg(target_os = "macos")]
+    {
+        if embedded {
+            if let Some(main_window) = app.get_webview_window("main") {
+                let parent_pos = main_window.outer_position().map_err(|e| e.to_string())?;
+                let new_x = parent_pos.x + x;
+                let new_y = parent_pos.y + y;
+                window
+                    .set_position(tauri::Position::Physical(tauri::PhysicalPosition {
+                        x: new_x,
+                        y: new_y,
+                    }))
+                    .map_err(|e| e.to_string())?;
+            }
+        } else {
+            window
+                .set_position(tauri::LogicalPosition::new(x as f64, y as f64))
+                .map_err(|e| e.to_string())?;
+        }
+    }
 
     Ok(())
 }
@@ -139,6 +190,49 @@ async fn update_service_view_mode(
                 }
             }
         }
+
+        #[cfg(target_os = "macos")]
+        {
+            use cocoa::base::{id, nil};
+            use objc::{msg_send, sel, sel_impl};
+
+            let child_ptr = window.ns_window().map_err(|e| e.to_string())? as id;
+            let child_ptr_addr = child_ptr as usize;
+
+            if embedded {
+                if let Some(main_window) = app.get_webview_window("main") {
+                    let main_ptr = main_window.ns_window().map_err(|e| e.to_string())? as id;
+                    let main_ptr_addr = main_ptr as usize;
+
+                    dispatch::Queue::main().exec_sync(move || unsafe {
+                        let child_ptr = child_ptr_addr as id;
+                        let main_ptr = main_ptr_addr as id;
+
+                        let _: () = msg_send![main_ptr, addChildWindow:child_ptr ordered:1];
+                        
+                        // Ensure borderless and non-movable to prevent detachment
+                        let _: () = msg_send![child_ptr, setStyleMask:0]; // 0 = NSWindowStyleMaskBorderless
+                        let _: () = msg_send![child_ptr, setMovable:0];
+                        let _: () = msg_send![child_ptr, setMovableByWindowBackground:0];
+
+                        let _: () = msg_send![child_ptr, setHasShadow:0];
+                    });
+                }
+            } else {
+                dispatch::Queue::main().exec_sync(move || unsafe {
+                    let child_ptr = child_ptr_addr as id;
+                    let parent: id = msg_send![child_ptr, parentWindow];
+                    if parent != nil {
+                        let _: () = msg_send![parent, removeChildWindow:child_ptr];
+                    }
+                    
+                    // Restore movability for windowed mode
+                    let _: () = msg_send![child_ptr, setMovable:1];
+                    
+                    let _: () = msg_send![child_ptr, setHasShadow:1];
+                });
+            }
+        }
     }
     Ok(())
 }
@@ -154,6 +248,52 @@ async fn update_service_view_bounds(
 ) -> Result<(), String> {
     let label = format!("service-{}", id);
     if let Some(window) = app.get_webview_window(&label) {
+        #[cfg(target_os = "macos")]
+        {
+            use cocoa::base::id;
+            use objc::{msg_send, sel, sel_impl};
+
+            let child_ptr = window.ns_window().map_err(|e| e.to_string())? as id;
+            let child_ptr_addr = child_ptr as usize;
+
+            if let Some(main_window) = app.get_webview_window("main") {
+                let main_ptr = main_window.ns_window().map_err(|e| e.to_string())? as id;
+                let main_ptr_addr = main_ptr as usize;
+
+                dispatch::Queue::main().exec_sync(move || unsafe {
+                    let child_ptr = child_ptr_addr as id;
+                    let main_ptr = main_ptr_addr as id;
+
+                    // FORCE re-attach to ensure it stays embedded
+                    let _: () = msg_send![main_ptr, addChildWindow:child_ptr ordered:1];
+
+                    // FORCE style again to prevent detachment
+                    let _: () = msg_send![child_ptr, setStyleMask:0];
+                    let _: () = msg_send![child_ptr, setMovable:0];
+                    let _: () = msg_send![child_ptr, setMovableByWindowBackground:0];
+                    let _: () = msg_send![child_ptr, setHasShadow:0];
+                });
+
+                let parent_pos = main_window.outer_position().map_err(|e| e.to_string())?;
+                let new_x = parent_pos.x + x;
+                let new_y = parent_pos.y + y;
+
+                window
+                    .set_position(tauri::Position::Physical(tauri::PhysicalPosition {
+                        x: new_x,
+                        y: new_y,
+                    }))
+                    .map_err(|e| e.to_string())?;
+                window
+                    .set_size(tauri::Size::Physical(tauri::PhysicalSize {
+                        width: width as u32,
+                        height: height as u32,
+                    }))
+                    .map_err(|e| e.to_string())?;
+                return Ok(());
+            }
+        }
+
         window
             .set_position(tauri::LogicalPosition::new(x as f64, y as f64))
             .map_err(|e| e.to_string())?;
