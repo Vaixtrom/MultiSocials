@@ -112,10 +112,39 @@ async fn create_service_view(
     }
 
     // Force position again just in case
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     window
         .set_position(tauri::LogicalPosition::new(x as f64, y as f64))
         .map_err(|e| e.to_string())?;
+
+    #[cfg(target_os = "linux")]
+    {
+        if embedded {
+            if let Some(main_window) = app.get_webview_window("main") {
+                let parent_pos = main_window.outer_position().map_err(|e| e.to_string())?;
+                let new_x = parent_pos.x + x;
+                let new_y = parent_pos.y + y;
+                window
+                    .set_position(tauri::Position::Physical(tauri::PhysicalPosition {
+                        x: new_x,
+                        y: new_y,
+                    }))
+                    .map_err(|e| e.to_string())?;
+                
+                // Set transient for to keep on top
+                use gtk::prelude::*;
+                use tauri::platform::linux::WindowExtLinux;
+
+                if let (Ok(gtk_window), Ok(main_gtk_window)) = (window.gtk_window(), main_window.gtk_window()) {
+                    gtk_window.set_transient_for(Some(&main_gtk_window));
+                }
+            }
+        } else {
+            window
+                .set_position(tauri::LogicalPosition::new(x as f64, y as f64))
+                .map_err(|e| e.to_string())?;
+        }
+    }
 
     #[cfg(target_os = "macos")]
     {
@@ -193,6 +222,24 @@ async fn update_service_view_mode(
                     let style = GetWindowLongPtrW(child_hwnd, GWL_STYLE);
                     let new_style = (style & !WS_CHILD.0 as isize) | WS_POPUP.0 as isize;
                     SetWindowLongPtrW(child_hwnd, GWL_STYLE, new_style);
+                }
+            }
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            use gtk::prelude::*;
+            use tauri::platform::linux::WindowExtLinux;
+
+            if embedded {
+                if let Some(main_window) = app.get_webview_window("main") {
+                    if let (Ok(gtk_window), Ok(main_gtk_window)) = (window.gtk_window(), main_window.gtk_window()) {
+                        gtk_window.set_transient_for(Some(&main_gtk_window));
+                    }
+                }
+            } else {
+                if let Ok(gtk_window) = window.gtk_window() {
+                    gtk_window.set_transient_for(None::<&gtk::Window>);
                 }
             }
         }
@@ -294,6 +341,29 @@ async fn update_service_view_bounds(
                     .set_size(tauri::Size::Physical(tauri::PhysicalSize {
                         width: width as u32,
                         height: (height as i32 - 60) as u32,
+                    }))
+                    .map_err(|e| e.to_string())?;
+                return Ok(());
+            }
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            if let Some(main_window) = app.get_webview_window("main") {
+                let parent_pos = main_window.outer_position().map_err(|e| e.to_string())?;
+                let new_x = parent_pos.x + x;
+                let new_y = parent_pos.y + y;
+
+                window
+                    .set_position(tauri::Position::Physical(tauri::PhysicalPosition {
+                        x: new_x,
+                        y: new_y,
+                    }))
+                    .map_err(|e| e.to_string())?;
+                window
+                    .set_size(tauri::Size::Physical(tauri::PhysicalSize {
+                        width: width as u32,
+                        height: height as u32,
                     }))
                     .map_err(|e| e.to_string())?;
                 return Ok(());

@@ -6,11 +6,19 @@ Desktop app for managing multiple social media accounts in one place.
 
 **[⬇️ Download Latest Release](https://github.com/Vaixtrom/MultiSocials/releases/latest)**
 
-Choose either:
-- `MultiSocials_0.1.0_x64_en-US.msi`
-- `MultiSocials_0.1.0_x64-setup.exe`
+### Windows
+- `MultiSocials-Setup.exe`
 
 > **Note:** Windows SmartScreen will warn you because the app is not code-signed. Click "More info" → "Run anyway" to install.
+
+### macOS
+- `MultiSocials.dmg`
+
+> **Note:** On macOS, you may need to go to **System Settings** > **Privacy & Security** and scroll to the bottom to allow the app to open, as it is not code-signed by Apple.
+
+### Linux
+- `MultiSocials.AppImage` (Recommended)
+- `MultiSocials.deb` (Debian/Ubuntu)
 
 ## Screenshots
 
